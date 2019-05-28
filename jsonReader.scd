@@ -88,21 +88,21 @@ TODO how to specify a particular frame as sPos
 SynthDef(\simpleBufPlayer_frames, {
 	arg buf=0, rate=1, sPos=0, endPos=10000,  amp=0.1, out=0, loop=0,
 	atk=1.1, sus=0.3, rel=1.1;
-	var sig, env, trigger;
-	var loopFreq = (BufSampleRate.ir(buf) / endPos-sPos);
+	var sig, env;
+	var loopFreq = BufSampleRate.ir(buf) / (endPos-sPos);
 	var trig = Impulse.kr(loopFreq); // THE TRIG IS THE PROBLEM NOW
-	trig = Impulse.kr(2.0);
-	//loopFreq.poll;
 	env = EnvGen.kr(Env([0,1,1,0],[atk,sus,rel],[1,0,-1]),doneAction:2);
 	sig = PlayBuf.ar(1, buf, rate, trig, startPos:sPos, loop:loop);
-	//test trig
-	Out.ar([sig, trig], Mix.ar(sig*env*amp));
+	sig = sig * env * amp;
+	Out.ar(out, sig);
 }).add;
 
 
 //
+~by_frame_id["spot1.wav_f1146"]
 ~by_frame_id["spot1.wav_f1146"]["start_sample"]
 ~by_frame_id["spot1.wav_f1146"]["end_sample"]
+~by_frame_id["spot1.wav_f1146"]["absolute_path"]
 ~testDict[~by_frame_id["spot1.wav_f1146"]["track_id"]].numFrames
 ~testDict[~by_frame_id["spot1.wav_f1146"]["track_id"]].sampleRate
 
@@ -111,19 +111,31 @@ SynthDef(\simpleBufPlayer_frames, {
 Pbindef(\testPlayer,
 	\instrument, \simpleBufPlayer_frames,
 	\buf, ~testDict[~by_frame_id["spot1.wav_f1146"]["track_id"]],
-	\out, 0,
+	\out, Pseq([-1, 0, 1], inf),
 	\dur, Pseq([1] ,inf).trace,
 	\amp, Pseq([0.5, 0.2, 0.8]/5, inf),
 	\atk, 1,
 	\sus, 2,
 	\rel, 3,
 	\loop, 1,
-	\sPos, ~by_frame_id["spot1.wav_f1146"]["start_sample"], //NEED CONVERT TO NUMBER
-	\endPos, ~by_frame_id["spot1.wav_f1146"]["end_sample"] , //NEED CONVERT TO NUMBER
+	\sPos, ~by_frame_id["spot1.wav_f1146"]["start_sample"].asFloat,
+	\endPos, ~by_frame_id["spot1.wav_f1146"]["end_sample"].asFloat,
 );
 
 Pbindef(\testPlayer).play;
+Pbindef(\testPlayer).stop;
+
+
+11.1.class
+
+11.isInteger
+"11.1".asFloat
+~by_frame_id["spot1.wav_f1146"]["start_sample"].asFloat
+
 
 
 s.record
 s.stopRecording
+
+
+JSON
