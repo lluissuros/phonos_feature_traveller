@@ -192,12 +192,13 @@ SynthDef(\simpleBufPlayer_frames, {
 	var sig, env;
 	env = EnvGen.kr(Env([0,1,1,0],[atk,sus,rel],[1,0,-1]),doneAction:2);
 	sig = LoopBuf.ar(
-		1, buf, rate,
+		1, buf,
+		rate: rate + LFNoise1.ar(0.1, 0.01, 0.005).poll,
 		startPos:sPos,
 		startLoop:sPos,
 //		endLoop:endPos + SinOsc.ar(30,0, 10, 5),
-		endLoop:endPos + 20000,
-		interpolation:4);
+		endLoop:endPos + LFNoise1.ar(0.01, 10000, 10000),
+		interpolation:2);
 	sig = sig * env * amp;
 	Out.ar(out, sig);
 }).add;
