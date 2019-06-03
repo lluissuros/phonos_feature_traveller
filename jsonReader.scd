@@ -34,37 +34,50 @@ other Hashmaps will have key: array[frame_id]
 };
 
 
-//from playAllSoundsFromFolder.scd
-~addBuffersToDict= { |folderPath, soundsDict|
-	var soundFilePaths = (folderPath +/+ "*").pathMatch;
-	var buffers = soundFilePaths.collect({|path| Buffer.readChannel(s, path, channels:[0]) });
-	postf("  \n ... loading % subfolder: \n", folderPath.folderName);
-
-	buffers.do({|buf|
-		// like this, it has easy acces such as ~soundsDict[9000]
-		var key = soundsDict.size;
-		soundsDict.add(key -> buf ) });
-};
 )
+
 
 (
 // == LOAD JSON ===
 var dir = Document.current.dir.asString;
-var by_frame_id_path = dir ++"/files/by_frame_id.json";
+var by_frame_id = dir ++"/files/by_frame_id.json";
+var track_to_path = dir ++"/files/tracks_to_path.json";
 
 // TODO: create a json with the filepaths, and load the buffers
 // ==> look at granulizer
 //var tracks_paths = dir ++"/files/by_frame_id.json";
 
-
-{~by_frame_id = ~load_json.( by_frame_id_path )}.bench;
-
-// === LOAD BUFFERS ===
-
+{~by_frame_id = ~load_json.( by_frame_id )}.bench;
+{~tracks_paths = ~load_json.( track_to_path )}.bench;
 )
 
 
 
+
+
+(
+/*
+    === LOAD BUFFERS ===
+We load from the provided json on the python side
+*/
+
+
+//var TRACKS_FOLDER_PATH = "/Users/lluissuros/Music/SuperCollider/SuperCollider Projects/phonos_feature_traveller/phonos_dataset_local/";
+
+~buffers_by_id = Dictionary.new;
+
+~tracks_paths.keys.do({ |key|
+	var path = ~tracks_paths[key];
+	var buffer = Buffer.readChannel(s, path, channels:[0]);
+	~buffers_by_id.add(key -> buffer );
+	postf(" % loaded... \n", key);
+});
+
+"\n ... ~buffers_by_id loading buffers complete, but wait a little:".postln;
+)
+
+
+~buffers_by_id
 
 
 (
