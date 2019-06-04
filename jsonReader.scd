@@ -6,6 +6,7 @@ JSON Reading
 NOTE for JSON load:
 
 Both Yaml and JSON loaders will load the Json, but the original numbers will now be Strings. Maybe should raise an issue, but in any case be aware of this and parse it .asFloat or .asInteger
+ ==> I think from the python side, there is also a requierement for numbers to by stringyfied...
 
 
 provide object by_frame_id wth all caracteristics (easy acces, has codeword, embedding, most_similars, features, PCA, everything
@@ -18,6 +19,41 @@ other Hashmaps will have key: array[frame_id]
  * cluster:
  * pitch:
  * any feature that I want
+
+
+
+=================
+EXAMPLE JSON:
+{
+    "all_alone.wav_f0": {
+        "absolute_path": "/Users/lluissuros/Documents/Datasets/phonos_dataset/all_alone.wav",
+        "end_sample": 4096,
+        "loudness": 0.0,
+        "mfcc_0": -1138.4200439453125,
+        "mfcc_1": 1.1444091796875e-05,
+        "mfcc_10": -2.6702880859375e-05,
+        "mfcc_11": -3.0517578125e-05,
+        "mfcc_12": -3.814697265625e-05,
+        "mfcc_2": -6.103515625e-05,
+        "mfcc_3": 8.0108642578125e-05,
+        "mfcc_4": -6.103515625e-05,
+        "mfcc_5": 2.288818359375e-05,
+        "mfcc_6": -2.6702880859375e-05,
+        "mfcc_7": -5.340576171875e-05,
+        "mfcc_8": -4.57763671875e-05,
+        "mfcc_9": -2.288818359375e-05,
+        "next_frame_id": "all_alone.wav_f1",
+        "previous_frame_id": "all_alone.wav_f1533",
+        "scale": "major",
+        "start_sample": 0,
+        "track_id": "all_alone.wav",
+        "word_1_nearest": 153,
+        "word_2_nearest": 28,
+        "word_3_nearest": 1
+    },
+(...)
+}
+=================
 
 
 */
@@ -38,20 +74,17 @@ other Hashmaps will have key: array[frame_id]
 
 
 (
-// == LOAD JSON ===
+// == LOAD JSONS from python ===
 var dir = Document.current.dir.asString;
 var by_frame_id = dir ++"/files/by_frame_id.json";
 var track_to_path = dir ++"/files/tracks_to_path.json";
+var by_word = dir ++"/files/by_word.json";
 
-// TODO: create a json with the filepaths, and load the buffers
-// ==> look at granulizer
-//var tracks_paths = dir ++"/files/by_frame_id.json";
 
 {~by_frame_id = ~load_json.( by_frame_id )}.bench;
 {~tracks_paths = ~load_json.( track_to_path )}.bench;
+{~by_codeword = ~load_json.( by_word )}.bench;
 )
-
-
 
 
 
@@ -60,9 +93,6 @@ var track_to_path = dir ++"/files/tracks_to_path.json";
     === LOAD BUFFERS ===
 We load from the provided json on the python side
 */
-
-
-//var TRACKS_FOLDER_PATH = "/Users/lluissuros/Music/SuperCollider/SuperCollider Projects/phonos_feature_traveller/phonos_dataset_local/";
 
 ~buffers_by_id = Dictionary.new;
 
@@ -77,66 +107,39 @@ We load from the provided json on the python side
 )
 
 
+~by_frame_id["spot1.wav_f1346"]
+
+//tests:
 ~buffers_by_id
+~by_codeword["0"]
+{~by_frame_id["spot1.wav_f1346"]["track_id"]}.bench
+~buffers_by_id[~by_frame_id["spot1.wav_f1346"]["track_id"]]
 
 
 (
-//test Buffer
+//tests
 var trackId = ~by_frame_id["spot1.wav_f1346"]["track_id"];
-var path = ~by_frame_id["spot1.wav_f1346"]["absolute_path"];
-var buf = Buffer.readChannel(s, path, channels:[0]);
-
-//TODO: need all track_ids to build a Buffer dictionary, from all_tracks json
-
-~testDict = Dictionary.new();
-~testDict[trackId] = buf;
-//~addBuffersToDict.()
-
+var buf = ~buffers_by_id[~by_frame_id["spot1.wav_f1346"]["track_id"]];
+var path = ~by_frame_id["all_alone.wav_f27"]["absolute_path"];
 trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
-path = ~by_frame_id["all_alone.wav_f27"]["absolute_path"];
-buf = Buffer.readChannel(s, path, channels:[0]);
-~testDict[trackId] = buf;
-//... and so on
-
 )
 
 
-~testDict
-
-//tests
+//more tests
 ~by_frame_id["spot1.wav_f1146"]["start_sample"] //test
 ~by_frame_id["spot1.wav_f1146"]["end_sample"] //test
-~by_frame_id["spot1.wav_f1146"]["track_id"] //test
-~by_frame_id["spot1.wav_f1146"]["absolute_path"] //test
-
-
-
-~by_frame_id["spot1.wav_f12"]["track_id"]
-
-
-(
-/*
-test how an array of bag-of-features would work:
-*/
-
-~testByCodeword = Dictionary.new();
-~testByCodeword["c1"] = ["spot1.wav_f1146" , "spot1.wav_f1346", "spot1.wav_f142", "spot1.wav_f12", "all_alone.wav_f27", "all_alone.wav_f47"];
-)
-
-~testByCodeword["c1"]
-
-
-
+~by_frame_id["spot1.wav_f1146"]["track_id"] //test track_id
+~by_frame_id["spot1.wav_f12"]["next_frame_id"]
+~by_frame_id["spot1.wav_f1146"]["absolute_path"] //test path
 
 ~by_frame_id["spot1.wav_f1146"]
 ~by_frame_id["spot1.wav_f1146"]["start_sample"]
 ~by_frame_id["spot1.wav_f1146"]["end_sample"]
 ~by_frame_id["spot1.wav_f1146"]["absolute_path"]
-~testDict[~by_frame_id["spot1.wav_f1146"]["track_id"]].numFrames
-~testDict[~by_frame_id["spot1.wav_f1146"]["track_id"]].sampleRate
-~testDict["spot1.wav_f1146"]
+~buffers_by_id[~by_frame_id["spot1.wav_f1146"]["track_id"]].numFrames
+~buffers_by_id[~by_frame_id["spot1.wav_f1146"]["track_id"]].sampleRate
 
-
+~by_frame_id["spot1.wav_f1146"]["word_1_nearest"] //test codeword
 
 
 
@@ -144,17 +147,17 @@ test how an array of bag-of-features would work:
 (
 //MORE POTENCIAL FUNCS
 
-~getByCodeword = {|frameId|
-	// ~by_frame_id[frameId]["codeword"] NOT AVAILABLE YET
-	var mockCodeword = "c1"; //see above
-	var index = ~testByCodeword["c1"].size.rand;
-	var otherFrameId = ~testByCodeword[mockCodeword][index];
+~getSimilarFrameId = {|frameId, nearest=1|
+	var nearest_neighbour = "word_"++ nearest ++"_nearest";
+	var codeWord = ~by_frame_id[frameId][nearest_neighbour];
+	var index = ~by_codeword[codeWord].size.rand;
+	var otherFrameId = ~by_codeword[codeWord][index];
 	otherFrameId;
 };
 
 ~getBuf = {|frameId|
 	var trackId = ~by_frame_id[frameId]["track_id"];
-	var buf = ~testDict[trackId];
+	var buf = ~buffers_by_id[trackId];
 	buf;
 };
 
@@ -166,17 +169,20 @@ test how an array of bag-of-features would work:
 	~by_frame_id[frameId]["end_sample"].asFloat;
 };
 
+~getRandFrameId = {
+	~by_frame_id.keys.asArray[~by_frame_id.keys.size.rand];
+};
+
 )
 
 
 
 
 
-
 //test
-~getByCodeword.("spot1.wav_f1146")
-~getBuf.(~getByCodeword.("spot1.wav_f1146")); //NEED TO CREATE PROPER DICTIONRY FOR BUFFERS!!
-
+~getSimilarFrameId.("spot1.wav_f1146")
+~getRandFrameId.()
+~getBuf.(~getSimilarFrameId.("spot1.wav_f1146", 3));
 
 
 
@@ -187,13 +193,15 @@ test how an array of bag-of-features would work:
 ==============================================================
 PERFORM
 
-
  We only need now to provide the frames!
 Remember to .asFloat, they come as strings...
 
 TODO:
  * need a nicer, much less verbose approach to obtain frames
+
 */
+
+
 
 (
 //TODO change name: loopbuf smtg
