@@ -146,6 +146,7 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 ~buffers_by_id[~by_frame_id["spot1.wav_f1146"]["track_id"]].sampleRate
 
 ~by_frame_id["spot1.wav_f1146"]["word_1_nearest"] //test codeword
+~by_frame_id["spot1.wav_f1146"]["previous_frame_id"]
 
 
 
@@ -182,6 +183,20 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 	frame_id
 };
 
+~getNextFrameId = {|frameId, numberFrames=1|
+	/* will give the n-further away frame id */
+	Array.newClear(numberFrames).inject( frameId, { |acc, idx|
+	~by_frame_id[acc]["next_frame_id"];
+});
+};
+
+~getPreviousFrameId = {|frameId, numberFrames=1|
+	/* will give the n-further away frame id */
+	Array.newClear(numberFrames).inject( frameId, { |acc, idx|
+	~by_frame_id[acc]["previous_frame_id"];
+});
+};
+
 
 ~updateCurrent = { |frameId|
 	/*updates the frame id and buffer elements, if we do it inside pbind it will be too slow
@@ -205,6 +220,8 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 
 //test
 ~getSimilarFrameId.("spot1.wav_f1146")
+~getNextFrameId.("spot1.wav_f1146", 3)
+~getPreviousFrameId.("spot1.wav_f1146", 3)
 ~getRandFrameId.()
 ~getBuf.(~getSimilarFrameId.("spot1.wav_f1146", 3));
 
@@ -240,7 +257,7 @@ SynthDef(\loopPlayer, {
 	env = EnvGen.kr(Env([0,1,1,0],[atk,sus,rel],[1,0,-1]),doneAction:2);
 	sig = LoopBuf.ar(
 		1, buf,
-		rate: rate + LFNoise1.ar(0.1, 0.01, 0.005),
+		rate: (rate + LFNoise1.ar(0.1, 0.01, 0.005)) * (-1),
 		startPos:sPos,
 		startLoop:sPos,
 //		endLoop:endPos + SinOsc.ar(30,0, 10, 5),
@@ -271,7 +288,7 @@ SynthDef(\loopPlayer, {
 
 
 (
-~coolFrames = ["spot1.wav_f1146","fa_bats.wav_f11556", "ens_quedem.wav_f572", "spot1_lower.wav_f267", "spot1_lower.wav_f586", "fostercare.wav_f653", "fostercare.wav_f1675", "spot4.wav_f121", "ens_quedem.wav_f724"];
+~coolFrames = ["spot1.wav_f1146","fa_bats.wav_f11556", "ens_quedem.wav_f572", "spot1_lower.wav_f267", "spot1_lower.wav_f586", "fostercare.wav_f653", "fostercare.wav_f1675", "spot4.wav_f121", "ens_quedem.wav_f724", "ens_quedem.wav_f653"];
 
 ~updateCurrent.(~coolFrames[0]);
 )
@@ -287,10 +304,9 @@ Pbindef(\loopPlayer1,
 	\sus, Pbrown(0.001, 3, 0.0125, inf),
 	\rel, Pbrown(0.01, 2, 0.0125, inf),
 	\dur, Pwhite(0.005, 0.02, inf) * ( Pkey(\atk) + Pkey(\sus) + Pkey(\rel)),
-
 	\getStart, Pfuncn({~currentStartFrame}, inf), //need to get like this
 	\getEnd, Pfuncn({~currentEndFrame}, inf), //need to get like this to Pkey
-	\offsetStart, Pbrown(0,30000,10000, inf),
+	\offsetStart, Pbrown(0,300000,10000, inf),
 	\offsetEnd,   Pbrown(0,1000000,30000, inf),
 	\sPos, Pkey(\getStart) + Pkey(\offsetStart),
 	\endPos, Pkey(\getEnd) + Pkey(\offsetEnd),
@@ -301,8 +317,9 @@ Pbindef(\loopPlayer1,
 Pbindef(\loopPlayer1).play;
 Pbindef(\loopPlayer1).stop;
 
-Pbindef(\loopPlayer1)
-~currentStartFrame = 222223
+
+
+
 
 (
 // ==================
@@ -321,6 +338,7 @@ Pbindef(\loopPlayer1)
 };
 
 )
+
 
 ~setRandBuf.();
 ~setRandSameWord.();
@@ -355,7 +373,7 @@ Pbindef(\loopPlayer1)
 	});
 
 	frames_simcodes = frames_simcodes.scramble;
-	//frames_simcodes = frames_simcodes.pyramid(3);
+	frames_simcodes = frames_simcodes.pyramid(3);
 
 	300.do({ arg i;
 		var frameId = frames_simcodes.wrapAt(i);
@@ -367,8 +385,50 @@ Pbindef(\loopPlayer1)
 
 	"TASK FINISHED".postln;
 });
+
+
+~moveForward = Task({
+	/*moves over previous frames on current Frame*/
+	300.do({ arg i;
+		var nextFrameId = ~getNextFrameId.(~currentFrameId, 1);
+		var waitTime = ((1..10)/10).choose;
+		nextFrameId.postln;
+		~updateCurrent.(nextFrameId);
+		waitTime.wait;
+    });
+	"MOVE FROWARD  FINISHED".postln;
+});
+
+
+~moveBackwards = Task({
+	/*moves over previous frames on current Frame*/
+	300.do({ arg i;
+		var nextFrameId = ~getPreviousFrameId.(~currentFrameId, 1);
+		var waitTime = ((1..10)/10).choose;
+		nextFrameId.postln;
+		~updateCurrent.(nextFrameId);
+		waitTime.wait;
+    });
+	"MOVE BACKWRDS  FINISHED".postln;
+});
 )
 
+
+(
+~moveForward.stop;
+~moveForward.start;
+)
+
+(
+~moveBackwards.stop;
+~moveBackwards.start;
+)
+
+
+(
+~similar1.stop;
+~similar1.start;
+)
 
 
 (
@@ -376,10 +436,6 @@ Pbindef(\loopPlayer1)
 ~similar2.start;
 )
 
-(
-~similar1.stop;
-~similar1.start;
-)
 
 ~similar1.start;
 ~similar1.pause;
@@ -402,7 +458,6 @@ Pbindef(\loopPlayer1,
 	\sPos, Pfuncn({~currentStartFrame}, inf) + Pbrown(1000,20000,1000, inf),
 	\endPos, Pfuncn({~currentEndFrame}, inf) + Pbrown(0,20000,1000, inf), //when 0, nice artifacts
 );
-
 
 
 //nice artifacts with small frames:
