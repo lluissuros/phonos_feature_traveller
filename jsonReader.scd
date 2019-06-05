@@ -87,7 +87,6 @@ var by_word = dir ++"/files/by_word.json";
 )
 
 
-
 (
 /*
     === LOAD BUFFERS ===
@@ -107,6 +106,13 @@ We load from the provided json on the python side
 )
 
 
+
+
+
+
+
+
+//TODO delete tests
 ~by_frame_id["spot1.wav_f1346"]
 
 //tests:
@@ -152,6 +158,7 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 	var codeWord = ~by_frame_id[frameId][nearest_neighbour];
 	var index = ~by_codeword[codeWord].size.rand;
 	var otherFrameId = ~by_codeword[codeWord][index];
+	codeWord.postln;
 	otherFrameId;
 };
 
@@ -170,8 +177,25 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 };
 
 ~getRandFrameId = {
-	~by_frame_id.keys.asArray[~by_frame_id.keys.size.rand];
+	var frame_id = ~by_frame_id.keys.asArray[~by_frame_id.keys.size.rand];
+	//frame_id.postln;
+	frame_id
 };
+
+
+~updateCurrent = { |frameId|
+	/*updates the frame id and buffer elements, if we do it inside pbind it will be too slow
+	TODO: maybe an object like ~current{frameId, buf, etc?}
+	*/
+	var buf = ~getBuf.(frameId);
+	var startFrame = ~getStartSample.(frameId);
+	var endFrame = ~getEndSample.(frameId);
+	~currentFrameId = frameId;
+	~currentBuf = buf;
+	~currentStartFrame = startFrame;
+	~currentEndFrame = endFrame;
+};
+
 
 )
 
@@ -193,28 +217,30 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 ==============================================================
 PERFORM
 
- We only need now to provide the frames!
-Remember to .asFloat, they come as strings...
+-We only need now to provide the frames!
+-Remember to .asFloat for end_sample or start_sample or any numerical, they come as strings...
 
+------
 TODO:
- * need a nicer, much less verbose approach to obtain frames
+* need a nicer, much less verbose approach to obtain frames
+* to parse all start_frames end_frames .asFloat when charging(will it take ages?)
+* nice potential in changing startLoop and endLoop
+* nice to be in between small sample, and a little more when it becomes "music", nice artifacts
+----
 
 */
 
 
 
 (
-//TODO change name: loopbuf smtg
-// TODO: huge potential in changing startLoop and endLoop
-//NOTE: nice to be in between small sample, and a little more when it becomes "music"
-SynthDef(\simpleBufPlayer_frames, {
+SynthDef(\loopPlayer, {
 	arg buf=0, rate=1, sPos=0, endPos=10000,  amp=0.1, out=0, loop=0,
 	atk=1.1, sus=0.3, rel=1.1;
 	var sig, env;
 	env = EnvGen.kr(Env([0,1,1,0],[atk,sus,rel],[1,0,-1]),doneAction:2);
 	sig = LoopBuf.ar(
 		1, buf,
-		rate: rate + LFNoise1.ar(0.1, 0.01, 0.005).poll,
+		rate: rate + LFNoise1.ar(0.1, 0.01, 0.005),
 		startPos:sPos,
 		startLoop:sPos,
 //		endLoop:endPos + SinOsc.ar(30,0, 10, 5),
@@ -229,55 +255,203 @@ SynthDef(\simpleBufPlayer_frames, {
 
 
 
+//init
 
-
-
-
-~currentFrameId = "spot1.wav_f1146";
-~currentFrameId = "all_alone.wav_47";
 ~getStartSample.(~currentFrameId)
-~getBuf.("spot1.wav_f1346")
 ~getBuf.(~currentFrameId)
-~getBuf.(~getByCodeword.(~currentFrameId))
+~getBuf.(~getSimilarFrameId.(~currentFrameId, 3))
+
+
+//test
+~currentFrameId;
+~currentBuf;
+~currentStartFrame;
+~currentEndFrame;
+
 
 
 (
-~currentFrameId = "spot1.wav_f1146"; //init
+~coolFrames = ["spot1.wav_f1146","fa_bats.wav_f11556", "ens_quedem.wav_f572", "spot1_lower.wav_f267", "spot1_lower.wav_f586", "fostercare.wav_f653", "fostercare.wav_f1675", "spot4.wav_f121", "ens_quedem.wav_f724"];
 
-Pbindef(\testPlayer,
-	\instrument, \simpleBufPlayer_frames,
-	\buf, Pfuncn({
-		~currentFrameId = ~getByCodeword.(~currentFrameId); // change currentFrame
-		//~currentFrameId.postln;
-		~getBuf.(~getByCodeword.(~currentFrameId));
-	}, inf),
+~updateCurrent.(~coolFrames[0]);
+)
+
+
+(
+Pbindef(\loopPlayer1,
+	\instrument, \loopPlayer,
+	\buf, Pfuncn({~currentBuf},inf),
 	\out, Pseq([-1, 0, 1], inf),
-	\dur, Pseq([1] ,inf),
 	\amp, Pseq([0.5, 0.2, 0.8]/5, inf),
-	\atk, 1,
-	\sus, 7,
-	\rel, 1,
-	\loop, 0,
-//	\sPos, ~getStartSample.(~currentFrameId) + Pbrown(0,30000,10000, inf),
-//	\endPos, ~getEndSample.(~currentFrameId) + Pbrown(0,1000000,30000, inf),
-	\sPos, ~getStartSample.(~currentFrameId),
-	\endPos, ~getEndSample.(~currentFrameId),
+	\atk, Pbrown(0.001, 1, 0.0125, inf),
+	\sus, Pbrown(0.001, 3, 0.0125, inf),
+	\rel, Pbrown(0.01, 2, 0.0125, inf),
+	\dur, Pwhite(0.005, 0.02, inf) * ( Pkey(\atk) + Pkey(\sus) + Pkey(\rel)),
+
+	\getStart, Pfuncn({~currentStartFrame}, inf), //need to get like this
+	\getEnd, Pfuncn({~currentEndFrame}, inf), //need to get like this to Pkey
+	\offsetStart, Pbrown(0,30000,10000, inf),
+	\offsetEnd,   Pbrown(0,1000000,30000, inf),
+	\sPos, Pkey(\getStart) + Pkey(\offsetStart),
+	\endPos, Pkey(\getEnd) + Pkey(\offsetEnd),
 );
 
 )
 
-Pbindef(\testPlayer).play;
-Pbindef(\testPlayer).stop;
+Pbindef(\loopPlayer1).play;
+Pbindef(\loopPlayer1).stop;
+
+Pbindef(\loopPlayer1)
+~currentStartFrame = 222223
+
+(
+// ==================
+//FUNCTIONS TO CHANGE BUF and FRAMES
+// ==================
+
+~setRandBuf = {
+	var frameId = ~getRandFrameId.();
+	~updateCurrent.(frameId);
+};
+
+~setRandSameWord = {
+	var frameId = ~getSimilarFrameId.(~currentFrameId);
+	//frameId.postln;
+	~updateCurrent.(frameId);
+};
+
+)
+
+~setRandBuf.();
+~setRandSameWord.();
 
 
-11.1.class
 
-11.isInteger
-"11.1".asFloat
-~by_frame_id["spot1.wav_f1146"]["start_sample"].asFloat
+(
+//generates over similars on current Frame
+~similar1 = Task({
+	var frames_samecodes = 10.collect({
+		~getSimilarFrameId.(~currentFrameId, 2);
+	}).pyramid(3);
+
+    200.do({ arg i;
+		var frameId = frames_samecodes.wrapAt(i);
+		frameId.postln;
+		~updateCurrent.(frameId);
+		[0.5,0.2,0.1].choose.wait;
+    });
+	"TASK FINISHED".postln;
+});
+)
+
+(
+~similar2 = Task({
+	/*generates over similars on current Frame*/
+	var init_frame = ~currentFrameId;
+	var frames_simcodes = (0..20).inject( [init_frame], { |acc, idx|
+		var nearest = [1,2].wchoose([0.8,0.4].normalizeSum);
+		var newFrame = ~getSimilarFrameId.(acc[idx], nearest);
+		acc.add(newFrame);
+	});
+
+	frames_simcodes = frames_simcodes.scramble;
+	//frames_simcodes = frames_simcodes.pyramid(3);
+
+	300.do({ arg i;
+		var frameId = frames_simcodes.wrapAt(i);
+		var waitTime = ((1..10)/10).choose;
+		//frameId.postln;
+		~updateCurrent.(frameId);
+		waitTime.wait;
+    });
+
+	"TASK FINISHED".postln;
+});
+)
 
 
-~by_frame_id
+
+(
+~similar2.stop;
+~similar2.start;
+)
+
+(
+~similar1.stop;
+~similar1.start;
+)
+
+~similar1.start;
+~similar1.pause;
+~similar1.resume;
+~similar1.reset;
+~similar1.stop;
+
+
+~updateCurrent.(~coolFrames[3]);
+~updateCurrent.(~coolFrames[(~coolFrames.size-1).rand]); //rand cool
+
+
+// ===========
+// =========== NICE VALUES
+// =========== NICE VALUES
+
+
+//nice artifacts with small frames:
+Pbindef(\loopPlayer1,
+	\sPos, Pfuncn({~currentStartFrame}, inf) + Pbrown(1000,20000,1000, inf),
+	\endPos, Pfuncn({~currentEndFrame}, inf) + Pbrown(0,20000,1000, inf), //when 0, nice artifacts
+);
+
+
+
+//nice artifacts with small frames:
+Pbindef(\loopPlayer1,
+	\offsetStart, Pbrown(1000,20000,1000, inf),
+	\offsetEnd,   Pbrown(0,20000,1000, inf),
+	\sPos, Pkey(\getStart) + Pkey(\offsetStart),
+	\endPos, Pkey(\getEnd) + Pkey(\offsetEnd),
+);
+
+//original values:
+Pbindef(\loopPlayer1,
+	\offsetStart, Pbrown(0,30000,10000, inf),
+	\offsetEnd,   Pbrown(0,1000000,30000, inf),
+	\sPos, Pkey(\getStart) + Pkey(\offsetStart),
+	\endPos, Pkey(\getEnd) + Pkey(\offsetEnd),
+);
+
+//start moves:
+Pbindef(\loopPlayer1,
+	\offsetStart, Pbrown(0,1000000,30000, inf),
+	\offsetEnd,   Pbrown(0,1000000,30000, inf),
+	\sPos, Pkey(\getStart) + Pkey(\offsetStart),
+	\endPos, Pkey(\getEnd) + Pkey(\offsetEnd),
+);
+
+
+
+//ENVELOPES
+Pbindef(\loopPlayer1,
+	\sus, Pseq((1..200)/100, inf)
+);
+
+Pbindef(\loopPlayer1,
+	\atk, Pseq((1..10)/10, inf)
+);
+
+
+(
+//nice dur original
+Pbindef(\loopPlayer1,
+	\atk, Pbrown(0.001, 0.1, 0.0125, inf),
+	\sus, Pbrown(0.001, 1, 0.0125, inf),
+	\rel, Pbrown(0.01, 0.1, 0.0125, inf),
+	\dur, Pwhite(0.005, 0.02, inf) * ( Pkey(\atk) + Pkey(\sus) + Pkey(\rel))
+);
+)
+
+
 
 
 
