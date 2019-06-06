@@ -111,7 +111,6 @@ We load from the provided json on the python side
 
 
 
-
 //TODO delete tests
 ~by_frame_id["spot1.wav_f1346"]
 
@@ -211,7 +210,6 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 	~currentEndFrame = endFrame;
 };
 
-
 )
 
 
@@ -288,7 +286,7 @@ SynthDef(\loopPlayer, {
 
 
 (
-~coolFrames = ["spot1.wav_f1146","fa_bats.wav_f11556", "ens_quedem.wav_f572", "spot1_lower.wav_f267", "spot1_lower.wav_f586", "fostercare.wav_f653", "fostercare.wav_f1675", "spot4.wav_f121", "ens_quedem.wav_f724", "ens_quedem.wav_f653"];
+~coolFrames = ["spot1.wav_f1146","fa_bats.wav_f11556", "ens_quedem.wav_f572", "spot1_lower.wav_f267", "spot1_lower.wav_f586", "fostercare.wav_f653", "fostercare.wav_f1675", "spot4.wav_f121", "ens_quedem.wav_f724", "ens_quedem.wav_f653", "feedbackchords.wav_f1135"];
 
 ~updateCurrent.(~coolFrames[0]);
 )
@@ -300,8 +298,8 @@ Pbindef(\loopPlayer1,
 	\buf, Pfuncn({~currentBuf},inf),
 	\out, Pseq([-1, 0, 1], inf),
 	\amp, Pseq([0.5, 0.2, 0.8]/5, inf),
-	\atk, Pbrown(0.001, 1, 0.0125, inf),
-	\sus, Pbrown(0.001, 3, 0.0125, inf),
+	\atk, Pbrown(0.01, 1, 0.0125, inf),
+	\sus, Pbrown(0.1, 3, 0.0125, inf),
 	\rel, Pbrown(0.01, 2, 0.0125, inf),
 	\dur, Pwhite(0.005, 0.02, inf) * ( Pkey(\atk) + Pkey(\sus) + Pkey(\rel)),
 	\getStart, Pfuncn({~currentStartFrame}, inf), //need to get like this
@@ -336,6 +334,7 @@ Pbindef(\loopPlayer1).stop;
 	//frameId.postln;
 	~updateCurrent.(frameId);
 };
+
 
 )
 
@@ -411,6 +410,18 @@ Pbindef(\loopPlayer1).stop;
     });
 	"MOVE BACKWRDS  FINISHED".postln;
 });
+
+~updateSimilarRealTimeTask = Task({
+	/*will get similar*/
+	300.do({ arg i;
+		var nextFrameId = ~getSimilarFrameId.(~currentFrameId, 1);
+		var waitTime = ((1..10)/10).choose;
+		~updateCurrent.(nextFrameId);
+		waitTime.wait;
+    });
+	"GET SIM REAL TIME FINISHED".postln;
+});
+
 )
 
 
@@ -422,6 +433,11 @@ Pbindef(\loopPlayer1).stop;
 (
 ~moveBackwards.stop;
 ~moveBackwards.start;
+)
+
+(
+~updateSimilarRealTimeTask.stop;
+~updateSimilarRealTimeTask.start;
 )
 
 
@@ -499,8 +515,8 @@ Pbindef(\loopPlayer1,
 (
 //nice dur original
 Pbindef(\loopPlayer1,
-	\atk, Pbrown(0.001, 0.1, 0.0125, inf),
-	\sus, Pbrown(0.001, 1, 0.0125, inf),
+	\atk, Pbrown(0.01, 0.1, 0.0125, inf),
+	\sus, Pbrown(0.1, 1, 0.0125, inf),
 	\rel, Pbrown(0.01, 0.1, 0.0125, inf),
 	\dur, Pwhite(0.005, 0.02, inf) * ( Pkey(\atk) + Pkey(\sus) + Pkey(\rel))
 );
@@ -509,7 +525,22 @@ Pbindef(\loopPlayer1,
 
 
 
-
 s.record
 s.stopRecording
 
+
+
+
+
+(
+var path = "/Users/lluissuros/Documents/Datasets/EVOL - HARDCORE vol.3 mp3/Deep Orko.mp3";
+~testBuf =  MP3.readToBuffer(s, path);
+)
+
+(
+var path = "/Users/lluissuros/Documents/Datasets/phonos_dataset/whale6.wav";
+~testBuf = Buffer.readChannel(s, path, channels:[0]);
+~testBuf =
+)
+
+{PlayBuf.ar(1, ~testBuf)}.play
