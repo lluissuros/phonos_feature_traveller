@@ -58,10 +58,22 @@ EXAMPLE JSON:
 
 */
 
+o = Server.local.options;
+o.numBuffers
+o.numBuffers = 10500;
+s.boot;
+
+
 
 (
-// === FUNCTIONS ===
-~load_json = {|filepath|
+
+// == LOAD JSONS from python ===
+var dir = Document.current.dir.asString ++ "/files";
+var by_frame_id = dir ++ "/by_frame_id.json";
+var track_to_path = dir ++ "/tracks_to_path.json";
+var by_word = dir ++ "/by_word.json";
+
+var load_json = {|filepath|
 	var object;
 	"parsing json into object, might take a while...".postln;
 	object = filepath.parseYAMLFile(); //parses json into object
@@ -70,24 +82,12 @@ EXAMPLE JSON:
 };
 
 
-)
+
+{d = load_json.( by_frame_id )}.bench;
+{~tracks_paths = load_json.( track_to_path )}.bench;
+{~by_codeword = load_json.( by_word )}.bench;
 
 
-(
-// == LOAD JSONS from python ===
-var dir = Document.current.dir.asString;
-var by_frame_id = dir ++"/files/by_frame_id.json";
-var track_to_path = dir ++"/files/tracks_to_path.json";
-var by_word = dir ++"/files/by_word.json";
-
-
-{~by_frame_id = ~load_json.( by_frame_id )}.bench;
-{~tracks_paths = ~load_json.( track_to_path )}.bench;
-{~by_codeword = ~load_json.( by_word )}.bench;
-)
-
-
-(
 /*
     === LOAD BUFFERS ===
 We load from the provided json on the python side
@@ -95,17 +95,18 @@ We load from the provided json on the python side
 
 ~buffers_by_id = Dictionary.new;
 
-~tracks_paths.keys.do({ |key|
-	var path = ~tracks_paths[key];
-	var buffer = Buffer.readChannel(s, path, channels:[0]);
-	~buffers_by_id.add(key -> buffer );
-	postf(" % loaded... \n", key);
-});
+// {~tracks_paths.keys.do({ |key|
+// 	var path = ~tracks_paths[key];
+// 	var buffer = Buffer.readChannel(s, path, channels:[0]);
+// 	~buffers_by_id.add(key -> buffer );
+// 	postf(" % loaded... \n", key);
+// 	});
+// }.bench;
 
 "\n ... ~buffers_by_id loading buffers complete, but wait a little:".postln;
 )
 
-
+~buffers_by_id.keys.size
 
 
 
@@ -125,7 +126,7 @@ We load from the provided json on the python side
 //tests
 var trackId = ~by_frame_id["spot1.wav_f1346"]["track_id"];
 var buf = ~buffers_by_id[~by_frame_id["spot1.wav_f1346"]["track_id"]];
-var path = ~by_frame_id["all_alone.wav_f27"]["absolute_path"];
+var path = ~by_frame_id["spot1.wav_f1346"]["absolute_path"];
 trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 )
 
@@ -141,8 +142,11 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 ~by_frame_id["spot1.wav_f1146"]["start_sample"]
 ~by_frame_id["spot1.wav_f1146"]["end_sample"]
 ~by_frame_id["spot1.wav_f1146"]["absolute_path"]
-~buffers_by_id[~by_frame_id["spot1.wav_f1146"]["track_id"]].numFrames
+~buffers_by_id[~by_frame_id["spot1.wav_f1146"]["track_id"]]
 ~buffers_by_id[~by_frame_id["spot1.wav_f1146"]["track_id"]].sampleRate
+~buffers_by_id["233014.wav"]
+~by_frame_id["233014.wav_f1"]
+~updateCurrent.("233014.wav_af4"); //breaks
 
 ~by_frame_id["spot1.wav_f1146"]["word_1_nearest"] //test codeword
 ~by_frame_id["spot1.wav_f1146"]["previous_frame_id"]
@@ -198,16 +202,15 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 
 
 ~updateCurrent = { |frameId|
-	/*updates the frame id and buffer elements, if we do it inside pbind it will be too slow
-	TODO: maybe an object like ~current{frameId, buf, etc?}
+	/*updates dictionary like ~current{frameId, buf, etc}
 	*/
-	var buf = ~getBuf.(frameId);
-	var startFrame = ~getStartSample.(frameId);
-	var endFrame = ~getEndSample.(frameId);
-	~currentFrameId = frameId;
-	~currentBuf = buf;
-	~currentStartFrame = startFrame;
-	~currentEndFrame = endFrame;
+	var newCurrentDict = Dictionary.new;
+	newCurrentdict[""frameId"] = frameId;
+	newCurrentdict[""buf"] = ~getBuf.(frameId);
+	newCurrentdict[""startFrame"] = ~getStartSample.(frameId);
+	newCurrentdict[""endFrame"] = ~getEndSample.(frameId);
+
+	~current = newCurrentDict;
 };
 
 )
@@ -249,61 +252,48 @@ TODO:
 
 (
 SynthDef(\loopPlayer, {
-	arg buf=0, rate=1, sPos=0, endPos=10000,  amp=0.1, out=0, loop=0,
+	arg buf=0, rate=1, sPos=0, endPos=10000,  amp=0.1, out=0, loop=0, pan=0,
 	atk=1.1, sus=0.3, rel=1.1;
-	var sig, env;
-	env = EnvGen.kr(Env([0,1,1,0],[atk,sus,rel],[1,0,-1]),doneAction:2);
-	sig = LoopBuf.ar(
+	var env = EnvGen.kr(Env([0,1,1,0],[atk,sus,rel],[1,0,-1]),doneAction:2);
+	var offset = LFNoise1.ar(0.1, 10000, 10000);
+	var sig = LoopBuf.ar(
 		1, buf,
-		rate: (rate + LFNoise1.ar(0.1, 0.01, 0.005)) * (-1),
+		rate: (rate + LFNoise0.ar(0.1, 0.01, 0.005)) * (-1),
 		startPos:sPos,
 		startLoop:sPos,
 //		endLoop:endPos + SinOsc.ar(30,0, 10, 5),
-		endLoop:endPos + LFNoise1.ar(0.01, 10000, 10000),
+		endLoop:endPos + offset,
 		interpolation:2);
 	sig = sig * env * amp;
-	Out.ar(out, sig);
+	Out.ar(out, Pan2.ar(sig, pan));
 }).add;
 
+
+//INIT
+~coolFrames = ["spot1.wav_f1146","fa_bats.wav_f11556", "ens_quedem.wav_f572", "spot1_lower.wav_f267", "spot1_lower.wav_f586", "fostercare.wav_f653", "fostercare.wav_f1675", "spot4.wav_f121", "ens_quedem.wav_f724", "ens_quedem.wav_f653", "feedbackchords.wav_f1135", "Galaxies Humanely Vinegar.wav_f582", "feedbackchords.wav_f395"];
+
+~updateCurrent.(~coolFrames[1]);
 )
 
 
 
 
-//init
 
-~getStartSample.(~currentFrameId)
-~getBuf.(~currentFrameId)
-~getBuf.(~getSimilarFrameId.(~currentFrameId, 3))
-
-
-//test
-~currentFrameId;
-~currentBuf;
-~currentStartFrame;
-~currentEndFrame;
-
-
-
-(
-~coolFrames = ["spot1.wav_f1146","fa_bats.wav_f11556", "ens_quedem.wav_f572", "spot1_lower.wav_f267", "spot1_lower.wav_f586", "fostercare.wav_f653", "fostercare.wav_f1675", "spot4.wav_f121", "ens_quedem.wav_f724", "ens_quedem.wav_f653", "feedbackchords.wav_f1135"];
-
-~updateCurrent.(~coolFrames[0]);
-)
 
 
 (
 Pbindef(\loopPlayer1,
 	\instrument, \loopPlayer,
-	\buf, Pfuncn({~currentBuf},inf),
+	\buf, Pfuncn({~current["buf"]},inf),
 	\out, Pseq([-1, 0, 1], inf),
+	\test, 0,
 	\amp, Pseq([0.5, 0.2, 0.8]/5, inf),
-	\atk, Pbrown(0.01, 1, 0.0125, inf),
-	\sus, Pbrown(0.1, 3, 0.0125, inf),
-	\rel, Pbrown(0.01, 2, 0.0125, inf),
-	\dur, Pwhite(0.005, 0.02, inf) * ( Pkey(\atk) + Pkey(\sus) + Pkey(\rel)),
-	\getStart, Pfuncn({~currentStartFrame}, inf), //need to get like this
-	\getEnd, Pfuncn({~currentEndFrame}, inf), //need to get like this to Pkey
+	\atk, Pbrown(1, 4, 0.0125, inf),
+	\sus, Pbrown(1, 3, 0.0125, inf),
+	\rel, Pbrown(1, 3, 0.0125, inf),
+	\dur, Pwhite(0.05, 0.2, inf) * ( Pkey(\atk) + Pkey(\sus) + Pkey(\rel)),
+	\getStart, Pfuncn({~current["startFrame"]}, inf), //need to get like this
+	\getEnd, Pfuncn({~current["endFrame"]}, inf), //need to get like this to Pkey
 	\offsetStart, Pbrown(0,300000,10000, inf),
 	\offsetEnd,   Pbrown(0,1000000,30000, inf),
 	\sPos, Pkey(\getStart) + Pkey(\offsetStart),
@@ -316,7 +306,7 @@ Pbindef(\loopPlayer1).play;
 Pbindef(\loopPlayer1).stop;
 
 
-
+~updateCurrent.(~coolFrames[11]);
 
 
 (
@@ -330,7 +320,7 @@ Pbindef(\loopPlayer1).stop;
 };
 
 ~setRandSameWord = {
-	var frameId = ~getSimilarFrameId.(~currentFrameId);
+	var frameId = ~getSimilarFrameId.(~current["frameId"]);
 	//frameId.postln;
 	~updateCurrent.(frameId);
 };
@@ -347,26 +337,10 @@ Pbindef(\loopPlayer1).stop;
 (
 //generates over similars on current Frame
 ~similar1 = Task({
-	var frames_samecodes = 10.collect({
-		~getSimilarFrameId.(~currentFrameId, 2);
-	}).pyramid(3);
-
-    200.do({ arg i;
-		var frameId = frames_samecodes.wrapAt(i);
-		frameId.postln;
-		~updateCurrent.(frameId);
-		[0.5,0.2,0.1].choose.wait;
-    });
-	"TASK FINISHED".postln;
-});
-)
-
-(
-~similar2 = Task({
 	/*generates over similars on current Frame*/
-	var init_frame = ~currentFrameId;
-	var frames_simcodes = (0..20).inject( [init_frame], { |acc, idx|
-		var nearest = [1,2].wchoose([0.8,0.4].normalizeSum);
+	var init_frame = ~current["frameId"];
+	var frames_simcodes = (0..5).inject( [init_frame], { |acc, idx|
+		var nearest = 1;
 		var newFrame = ~getSimilarFrameId.(acc[idx], nearest);
 		acc.add(newFrame);
 	});
@@ -374,24 +348,71 @@ Pbindef(\loopPlayer1).stop;
 	frames_simcodes = frames_simcodes.scramble;
 	frames_simcodes = frames_simcodes.pyramid(3);
 
-	300.do({ arg i;
+	10.do({ arg i;
 		var frameId = frames_simcodes.wrapAt(i);
-		var waitTime = ((1..10)/10).choose;
-		//frameId.postln;
+		var waitTime = ((1..10)/2).choose;
+		"SIM1".postln;
 		~updateCurrent.(frameId);
 		waitTime.wait;
     });
 
-	"TASK FINISHED".postln;
+	"SIMILAR 1 TASK FINISHED".postln;
+});
+
+~similar2 = Task({
+	/*generates over similars on current Frame*/
+	var init_frame = ~current["frameId"];
+	var frames_simcodes = (0..5).inject( [init_frame], { |acc, idx|
+		var nearest = [1,2].wchoose([0.3,0.7].normalizeSum);
+		var newFrame = ~getSimilarFrameId.(acc[idx], nearest);
+		acc.add(newFrame);
+	});
+
+	frames_simcodes = frames_simcodes.scramble;
+	frames_simcodes = frames_simcodes.pyramid(3);
+
+	10.do({ arg i;
+		var frameId = frames_simcodes.wrapAt(i);
+		var waitTime = ((1..10)/2).choose;
+		"SIM2".postln;
+		~updateCurrent.(frameId);
+		waitTime.wait;
+    });
+
+	"SIMILAR 2 TASK FINISHED".postln;
+});
+
+
+~similar3 = Task({
+	/*generates over similars on current Frame*/
+	var init_frame = ~current["frameId"];
+	var frames_simcodes = (0..3).inject( [init_frame], { |acc, idx|
+		var nearest = [1,2,3].wchoose([1,1,3].normalizeSum);
+		var newFrame = ~getSimilarFrameId.(acc[idx], nearest);
+		acc.add(newFrame);
+	});
+
+	frames_simcodes = frames_simcodes.scramble;
+	frames_simcodes = frames_simcodes.pyramid(3);
+
+	10.do({ arg i;
+		var frameId = frames_simcodes.wrapAt(i);
+		var waitTime = ((1..10)/2).choose;
+		"SIM3".postln;
+		~updateCurrent.(frameId);
+		waitTime.wait;
+    });
+
+	"SIMILAR 3 TASK FINISHED".postln;
 });
 
 
 ~moveForward = Task({
 	/*moves over previous frames on current Frame*/
-	300.do({ arg i;
-		var nextFrameId = ~getNextFrameId.(~currentFrameId, 1);
-		var waitTime = ((1..10)/10).choose;
-		nextFrameId.postln;
+	30.do({ arg i;
+		var nextFrameId = ~getNextFrameId.(~current["frameId"], 1);
+		var waitTime = ((1..10)/5).choose;
+		//nextFrameId.postln;
 		~updateCurrent.(nextFrameId);
 		waitTime.wait;
     });
@@ -401,10 +422,10 @@ Pbindef(\loopPlayer1).stop;
 
 ~moveBackwards = Task({
 	/*moves over previous frames on current Frame*/
-	300.do({ arg i;
-		var nextFrameId = ~getPreviousFrameId.(~currentFrameId, 1);
-		var waitTime = ((1..10)/10).choose;
-		nextFrameId.postln;
+	30.do({ arg i;
+		var nextFrameId = ~getPreviousFrameId.(~current["frameId"], 1);
+		var waitTime = ((1..10)/5).choose;
+		//nextFrameId.postln;
 		~updateCurrent.(nextFrameId);
 		waitTime.wait;
     });
@@ -413,16 +434,22 @@ Pbindef(\loopPlayer1).stop;
 
 ~updateSimilarRealTimeTask = Task({
 	/*will get similar*/
-	300.do({ arg i;
-		var nextFrameId = ~getSimilarFrameId.(~currentFrameId, 1);
-		var waitTime = ((1..10)/10).choose;
+	10.do({ arg i;
+		var nextFrameId = ~getSimilarFrameId.(~current["frameId"], 3);
+		var waitTime = ((1..10)).choose;
 		~updateCurrent.(nextFrameId);
+		"SIM REAL TIME".postln;
 		waitTime.wait;
     });
 	"GET SIM REAL TIME FINISHED".postln;
 });
 
 )
+
+
+~updateCurrent.(~coolFrames[0]);
+~updateCurrent.(~coolFrames[2]);
+~updateCurrent.(~coolFrames[5]);
 
 
 (
@@ -452,6 +479,11 @@ Pbindef(\loopPlayer1).stop;
 ~similar2.start;
 )
 
+(
+~similar3.stop;
+~similar3.start;
+)
+
 
 ~similar1.start;
 ~similar1.pause;
@@ -471,8 +503,8 @@ Pbindef(\loopPlayer1).stop;
 
 //nice artifacts with small frames:
 Pbindef(\loopPlayer1,
-	\sPos, Pfuncn({~currentStartFrame}, inf) + Pbrown(1000,20000,1000, inf),
-	\endPos, Pfuncn({~currentEndFrame}, inf) + Pbrown(0,20000,1000, inf), //when 0, nice artifacts
+	\sPos, Pfuncn({~current["startFrame"]}, inf) + Pbrown(1000,20000,1000, inf),
+	\endPos, Pfuncn({~current["endFrame"]}, inf) + Pbrown(0,20000,1000, inf), //when 0, nice artifacts
 );
 
 
@@ -513,11 +545,11 @@ Pbindef(\loopPlayer1,
 
 
 (
-//nice dur original
+//nice dur original, 10x faster
 Pbindef(\loopPlayer1,
-	\atk, Pbrown(0.01, 0.1, 0.0125, inf),
-	\sus, Pbrown(0.1, 1, 0.0125, inf),
-	\rel, Pbrown(0.01, 0.1, 0.0125, inf),
+	\atk, Pbrown(1, 3, 0.0125, inf),
+	\sus, Pbrown(1, 4, 0.0125, inf),
+	\rel, Pbrown(1, 3, 0.0125, inf),
 	\dur, Pwhite(0.005, 0.02, inf) * ( Pkey(\atk) + Pkey(\sus) + Pkey(\rel))
 );
 )
@@ -529,18 +561,3 @@ s.record
 s.stopRecording
 
 
-
-
-
-(
-var path = "/Users/lluissuros/Documents/Datasets/EVOL - HARDCORE vol.3 mp3/Deep Orko.mp3";
-~testBuf =  MP3.readToBuffer(s, path);
-)
-
-(
-var path = "/Users/lluissuros/Documents/Datasets/phonos_dataset/whale6.wav";
-~testBuf = Buffer.readChannel(s, path, channels:[0]);
-~testBuf =
-)
-
-{PlayBuf.ar(1, ~testBuf)}.play
