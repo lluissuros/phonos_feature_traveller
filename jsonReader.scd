@@ -83,7 +83,7 @@ var load_json = {|filepath|
 
 
 
-{d = load_json.( by_frame_id )}.bench;
+{~by_frame_id = load_json.( by_frame_id )}.bench;
 {~tracks_paths = load_json.( track_to_path )}.bench;
 {~by_codeword = load_json.( by_word )}.bench;
 
@@ -95,19 +95,29 @@ We load from the provided json on the python side
 
 ~buffers_by_id = Dictionary.new;
 
-// {~tracks_paths.keys.do({ |key|
-// 	var path = ~tracks_paths[key];
-// 	var buffer = Buffer.readChannel(s, path, channels:[0]);
-// 	~buffers_by_id.add(key -> buffer );
-// 	postf(" % loaded... \n", key);
-// 	});
-// }.bench;
+ {~tracks_paths.keys.do({ |key|
+ 	var path = ~tracks_paths[key];
+ 	var buffer = Buffer.readChannel(s, path, channels:[0]);
+ 	~buffers_by_id.add(key -> buffer );
+	postf(" % loaded... \n", key);
+ 	});
+ }.bench;
 
 "\n ... ~buffers_by_id loading buffers complete, but wait a little:".postln;
+
+s.latency = 1 //increased latency seems to avoid late
 )
 
 ~buffers_by_id.keys.size
 
+
+
+(
+~tracks_paths.keys.size.postln;
+~tracks_paths.keys.size.postln;
+~tracks_paths.keys.size.postln;
+
+)
 
 
 
@@ -167,9 +177,10 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 };
 
 ~getBuf = {|frameId|
-	var trackId = ~by_frame_id[frameId]["track_id"];
-	var buf = ~buffers_by_id[trackId];
-	buf;
+	var buf;
+	var trackId;
+	trackId = ~by_frame_id[frameId]["track_id"];
+	buf = ~buffers_by_id[trackId];
 };
 
 ~getStartSample = {|frameId|
@@ -189,29 +200,45 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 ~getNextFrameId = {|frameId, numberFrames=1|
 	/* will give the n-further away frame id */
 	Array.newClear(numberFrames).inject( frameId, { |acc, idx|
-	~by_frame_id[acc]["next_frame_id"];
-});
+		~by_frame_id[acc]["next_frame_id"];
+	});
 };
 
 ~getPreviousFrameId = {|frameId, numberFrames=1|
 	/* will give the n-further away frame id */
 	Array.newClear(numberFrames).inject( frameId, { |acc, idx|
-	~by_frame_id[acc]["previous_frame_id"];
-});
+		~by_frame_id[acc]["previous_frame_id"];
+	});
+};
+
+
+~updateCurrent_old = { |frameId|
+	/*updates dictionary like ~current{frameId, buf, etc}
+	*/
+	var newCurrentDict = Dictionary.new;
+	newCurrentDict["frameId"] = frameId;
+	newCurrentDict["buf"] = ~getBuf.(frameId);
+	newCurrentDict["startFrame"] = ~getStartSample.(frameId);
+	newCurrentDict["endFrame"] = ~getEndSample.(frameId);
+
+	~current = newCurrentDict;
 };
 
 
 ~updateCurrent = { |frameId|
-	/*updates dictionary like ~current{frameId, buf, etc}
-	*/
-	var newCurrentDict = Dictionary.new;
-	newCurrentdict[""frameId"] = frameId;
-	newCurrentdict[""buf"] = ~getBuf.(frameId);
-	newCurrentdict[""startFrame"] = ~getStartSample.(frameId);
-	newCurrentdict[""endFrame"] = ~getEndSample.(frameId);
-
-	~current = newCurrentDict;
+	Routine.run {
+		var newCurrentDict = Dictionary.new;
+		newCurrentDict["frameId"] = frameId;
+		newCurrentDict["buf"] = ~getBuf.(frameId);
+		newCurrentDict["startFrame"] = ~getStartSample.(frameId);
+		newCurrentDict["endFrame"] = ~getEndSample.(frameId);
+		s.sync;
+		~current = newCurrentDict;
+	};
 };
+
+
+
 
 )
 
@@ -221,7 +248,7 @@ trackId = ~by_frame_id["all_alone.wav_f27"]["track_id"];
 
 //test
 ~getSimilarFrameId.("spot1.wav_f1146")
-~getNextFrameId.("spot1.wav_f1146", 3)
+{~getNextFrameId.("spot1.wav_f1146", 10)}.bench
 ~getPreviousFrameId.("spot1.wav_f1146", 3)
 ~getRandFrameId.()
 ~getBuf.(~getSimilarFrameId.("spot1.wav_f1146", 3));
@@ -272,8 +299,9 @@ SynthDef(\loopPlayer, {
 //INIT
 ~coolFrames = ["spot1.wav_f1146","fa_bats.wav_f11556", "ens_quedem.wav_f572", "spot1_lower.wav_f267", "spot1_lower.wav_f586", "fostercare.wav_f653", "fostercare.wav_f1675", "spot4.wav_f121", "ens_quedem.wav_f724", "ens_quedem.wav_f653", "feedbackchords.wav_f1135", "Galaxies Humanely Vinegar.wav_f582", "feedbackchords.wav_f395"];
 
-~updateCurrent.(~coolFrames[1]);
+~updateCurrent.(~coolFrames[0]);
 )
+
 
 
 
@@ -284,22 +312,22 @@ SynthDef(\loopPlayer, {
 (
 Pbindef(\loopPlayer1,
 	\instrument, \loopPlayer,
-	\buf, Pfuncn({~current["buf"]},inf),
+	//\buf, Pfuncn({~current["buf"]},inf).trace,
+	\buf, Pfunc({~current["buf"]}),
 	\out, Pseq([-1, 0, 1], inf),
-	\test, 0,
+	\test, Pkey(\buf),
 	\amp, Pseq([0.5, 0.2, 0.8]/5, inf),
 	\atk, Pbrown(1, 4, 0.0125, inf),
 	\sus, Pbrown(1, 3, 0.0125, inf),
 	\rel, Pbrown(1, 3, 0.0125, inf),
-	\dur, Pwhite(0.05, 0.2, inf) * ( Pkey(\atk) + Pkey(\sus) + Pkey(\rel)),
-	\getStart, Pfuncn({~current["startFrame"]}, inf), //need to get like this
-	\getEnd, Pfuncn({~current["endFrame"]}, inf), //need to get like this to Pkey
+	\dur, Pwhite(0.05, 0.2, inf) * ( Pkey(\atk) + Pkey(\sus) + Pkey(\rel)) * 0.05,
+	\getStart, Pfunc({~current["startFrame"]}), //need to get like this
+	\getEnd, Pfunc({~current["endFrame"]}), //need to get like this to Pkey
 	\offsetStart, Pbrown(0,300000,10000, inf),
 	\offsetEnd,   Pbrown(0,1000000,30000, inf),
 	\sPos, Pkey(\getStart) + Pkey(\offsetStart),
 	\endPos, Pkey(\getEnd) + Pkey(\offsetEnd),
 );
-
 )
 
 Pbindef(\loopPlayer1).play;
@@ -307,6 +335,12 @@ Pbindef(\loopPlayer1).stop;
 
 
 ~updateCurrent.(~coolFrames[11]);
+~updateCurrent.(~coolFrames[0]);
+
+
+
+
+
 
 
 (
@@ -407,7 +441,7 @@ Pbindef(\loopPlayer1).stop;
 });
 
 
-~moveForward = Task({
+~moveForward_old = Task({
 	/*moves over previous frames on current Frame*/
 	30.do({ arg i;
 		var nextFrameId = ~getNextFrameId.(~current["frameId"], 1);
@@ -418,6 +452,26 @@ Pbindef(\loopPlayer1).stop;
     });
 	"MOVE FROWARD  FINISHED".postln;
 });
+
+
+~moveForward = {|step=1|
+	"helllo".postln;
+	Routine.run {
+		/*moves over previous frames on current Frame*/
+		30.do({ arg i;
+			var nextFrameId, waitTime;
+			nextFrameId = ~getNextFrameId.(~current["frameId"], step);
+			s.sync;
+			waitTime = ((1..10)/5).choose;
+			nextFrameId.postln;
+			~updateCurrent.(nextFrameId);
+			s.sync;
+			waitTime.wait;
+		});
+		"MOVE FROWARD  FINISHED".postln;
+	};
+};
+
 
 
 ~moveBackwards = Task({
@@ -447,14 +501,43 @@ Pbindef(\loopPlayer1).stop;
 )
 
 
+
+(
+Routine.run {
+		/*moves over previous frames on current Frame*/
+	(0..100).do({
+			Array.newClear(3).inject( ~current["frameId"], { |acc, idx|
+		~by_frame_id[acc]["next_frame_id"];
+	});
+	});
+
+	//(0..100).do({~getNextFrameId.(~current["frameId"], step);});
+	//s.sync;
+/*		30.do({ arg i;
+			var nextFrameId, waitTime;
+			nextFrameId = ~getNextFrameId.(~current["frameId"], step);
+			s.sync;
+			waitTime = ((1..10)/5).choose;
+			nextFrameId.postln;
+			~updateCurrent.(nextFrameId);
+			s.sync;
+			waitTime.wait;
+		});
+		"MOVE FROWARD  FINISHED".postln;*/
+	};
+
+)
+
+
+
 ~updateCurrent.(~coolFrames[0]);
 ~updateCurrent.(~coolFrames[2]);
 ~updateCurrent.(~coolFrames[5]);
 
 
 (
-~moveForward.stop;
-~moveForward.start;
+//~moveForward.stop;
+~moveForward.(1);
 )
 
 (
